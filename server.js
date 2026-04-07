@@ -4,7 +4,7 @@ const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const { Server } = require('socket.io');
-const { port, clientUrl } = require('./config/keys');
+const { port } = require('./config/keys');
 const connectDB = require('./config/db');
 
 // Routes
@@ -17,19 +17,20 @@ const { setupSocketHandlers } = require('./socket/tracking');
 const app = express();
 const server = http.createServer(app);
 
-// Connect to MongoDB
+// Connect DB
 connectDB();
 
-// CORS configuration based on environment
-const cors = require("cors");
 
+// ✅ CORS FIX (SINGLE SOURCE OF TRUTH)
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(',').map(o => o.trim())
   : [];
 
-app.use(cors({
+console.log("✅ Allowed Origins:", allowedOrigins);
+
+const corsOptions = {
   origin: function (origin, callback) {
-    console.log("🌐 Origin:", origin);
+    console.log("🌐 Incoming Origin:", origin);
 
     if (!origin) return callback(null, true);
 
@@ -37,13 +38,17 @@ app.use(cors({
       return callback(null, true);
     }
 
-    return callback(new Error("CORS blocked: " + origin));
+    return callback(new Error("❌ CORS BLOCKED: " + origin));
   },
   credentials: true
-}));
+};
 
-// VERY IMPORTANT (preflight fix)
-app.options('*', cors());
+// ✅ APPLY CORS ONCE
+app.use(cors(corsOptions));
+
+// ✅ HANDLE PREFLIGHT
+app.options('*', cors(corsOptions));
+
 
 // Socket.io
 const io = new Server(server, {
@@ -54,81 +59,42 @@ const io = new Server(server, {
   }
 });
 
-// Make io accessible to routes
 app.set('io', io);
+
 
 // Middleware
 app.use(helmet());
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`⚠️ CORS Blocked preflight/request from Origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-};
-
-app.use(cors(corsOptions));
-// Handle preflight requests for all routes
-app.options('*', cors(corsOptions));
-
 app.use(express.json());
 
-// Request logger
+// Logger
 app.use((req, res, next) => {
-  console.log(`${new Date().toLocaleTimeString()} │ Origin: ${req.headers.origin || 'N/A'} │ ${req.method} ${req.path}`);
+  console.log(`${new Date().toLocaleTimeString()} │ ${req.method} ${req.path}`);
   next();
 });
 
-// API Routes
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/buses', busRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-// Health check
+// Health
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok' });
 });
 
-// Serve Frontend in Production
-const path = require('path');
-if (process.env.NODE_ENV === 'production') {
-  const clientBuildPath = path.join(__dirname, '../client/dist');
-  app.use(express.static(clientBuildPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(clientBuildPath, 'index.html'));
-  });
-}
-
-// Setup Socket.io handlers
+// Socket handlers
 setupSocketHandlers(io);
 
-// Global Error Handler
+// Error handler
 app.use((err, req, res, next) => {
-  console.error('Unhandled Server Error:', err);
-  res.status(500).json({ message: 'Internal Server Error' });
+  console.error("🔥 Server Error:", err.message);
+  res.status(500).json({ message: err.message });
 });
 
 // Start server
 server.listen(port, () => {
-  console.log('');
-  console.log('  ╔══════════════════════════════════════════════╗');
-  console.log('  ║      🚌  Sandip Bus Tracker — Server        ║');
-  console.log(`  ║      Running on port ${port}                   ║`);
-  console.log('  ║      WebSocket: Ready                       ║');
-  console.log('  ╚══════════════════════════════════════════════╝');
-  console.log('');
-  console.log('  Demo Logins:');
-  console.log('  ─────────────────────────────────────────────');
-  console.log('  Student:  STU001 / password123');
-  console.log('  Driver:   DRV001 / password123');
-  console.log('  Admin:    admin  / admin123');
-  console.log('');
+  console.log(`🚀 Server running on port ${port}`);
 });
 
 module.exports = { app, server, io };
