@@ -21,8 +21,23 @@ const server = http.createServer(app);
 connectDB();
 
 // CORS configuration based on environment
-const allowedOrigins = clientUrl ? clientUrl.split(',') : ['http://localhost:5173'];
+const allowedOrigins = clientUrl
+  ? clientUrl.split(',').map(origin => origin.trim())
+  : ['http://localhost:5173'];
 
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow Postman / mobile apps
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log("❌ Blocked by CORS:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
+}));
 // Socket.io
 const io = new Server(server, {
   cors: {
